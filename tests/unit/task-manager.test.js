@@ -11,7 +11,7 @@ const mockReadFileSync = jest.fn();
 const mockExistsSync = jest.fn();
 const mockMkdirSync = jest.fn();
 const mockDirname = jest.fn();
-const mockCallClaude = jest.fn().mockResolvedValue({ tasks: [] }); // Default resolved value
+const mockCallGemini = jest.fn().mockResolvedValue({ tasks: [] }); // Default resolved value
 const mockCallPerplexity = jest.fn().mockResolvedValue({ tasks: [] }); // Default resolved value
 const mockWriteJSON = jest.fn();
 const mockGenerateTaskFiles = jest.fn();
@@ -59,7 +59,7 @@ jest.mock('../../scripts/modules/utils.js', () => ({
 
 // Mock AI services - This is the correct way to mock the module
 jest.mock('../../scripts/modules/ai-services.js', () => ({
-  callClaude: mockCallClaude,
+  callGemini: mockCallGemini,
   callPerplexity: mockCallPerplexity
 }));
 
@@ -80,7 +80,7 @@ jest.mock('../../scripts/modules/task-manager.js', () => {
 const testParsePRD = async (prdPath, outputPath, numTasks) => {
   try {
     const prdContent = mockReadFileSync(prdPath, 'utf8');
-    const tasks = await mockCallClaude(prdContent, prdPath, numTasks);
+    const tasks = await mockCallGemini(prdContent, prdPath, numTasks);
     const dir = mockDirname(outputPath);
     
     if (!mockExistsSync(dir)) {
@@ -223,7 +223,7 @@ const testAddTask = (tasksData, taskPrompt, dependencies = [], priority = 'mediu
 
 // Import after mocks
 import * as taskManager from '../../scripts/modules/task-manager.js';
-import { sampleClaudeResponse } from '../fixtures/sample-claude-response.js';
+import { sampleGeminiResponse } from '../fixtures/sample-gemini-response.js';
 import { sampleTasks, emptySampleTasks } from '../fixtures/sample-tasks.js';
 
 // Destructure the required functions for convenience
@@ -393,7 +393,7 @@ describe('Task Manager Module', () => {
       mockReadJSON.mockReturnValue(JSON.parse(JSON.stringify(sampleTasks)));
       mockWriteJSON.mockImplementation((path, data) => data); // Return data for chaining/assertions
       // Just set the mock resolved values directly - no spies needed
-      mockCallClaude.mockResolvedValue(sampleApiResponse);
+      mockCallGemini.mockResolvedValue(sampleApiResponse);
       mockCallPerplexity.mockResolvedValue(sampleApiResponse);
       
       // Mock console methods to prevent test output clutter
@@ -407,7 +407,7 @@ describe('Task Manager Module', () => {
       console.error.mockRestore();
     });
 
-    test('should call Claude when research flag is false', async () => {
+    test('should call Gemini when research flag is false', async () => {
       // Arrange
       const options = { ...baseOptions, research: false };
 
@@ -415,7 +415,7 @@ describe('Task Manager Module', () => {
       await taskManager.analyzeTaskComplexity(options);
 
       // Assert
-      expect(mockCallClaude).toHaveBeenCalled();
+      expect(mockCallGemini).toHaveBeenCalled();
       expect(mockCallPerplexity).not.toHaveBeenCalled();
       expect(mockWriteJSON).toHaveBeenCalledWith(reportPath, expect.any(Object));
     });
@@ -429,11 +429,11 @@ describe('Task Manager Module', () => {
 
       // Assert
       expect(mockCallPerplexity).toHaveBeenCalled();
-      expect(mockCallClaude).not.toHaveBeenCalled();
+      expect(mockCallGemini).not.toHaveBeenCalled();
       expect(mockWriteJSON).toHaveBeenCalledWith(reportPath, expect.any(Object));
     });
 
-    test('should handle valid JSON response from LLM (Claude)', async () => {
+    test('should handle valid JSON response from LLM (Gemini)', async () => {
       // Arrange
       const options = { ...baseOptions, research: false };
 
@@ -442,7 +442,7 @@ describe('Task Manager Module', () => {
 
       // Assert
       expect(mockReadJSON).toHaveBeenCalledWith(tasksPath);
-      expect(mockCallClaude).toHaveBeenCalled();
+      expect(mockCallGemini).toHaveBeenCalled();
       expect(mockCallPerplexity).not.toHaveBeenCalled();
       expect(mockWriteJSON).toHaveBeenCalledWith(
         reportPath,
@@ -455,28 +455,28 @@ describe('Task Manager Module', () => {
       expect(mockLog).toHaveBeenCalledWith('info', expect.stringContaining('Successfully analyzed'));
     });
 
-    test('should handle and fix malformed JSON string response (Claude)', async () => {
+    test('should handle and fix malformed JSON string response (Gemini)', async () => {
       // Arrange
       const malformedJsonResponse = `{"tasks": [{"id": 1, "complexity": 3, "subtaskCount: 2}]}`;
-      mockCallClaude.mockResolvedValueOnce(malformedJsonResponse);
+      mockCallGemini.mockResolvedValueOnce(malformedJsonResponse);
       const options = { ...baseOptions, research: false };
 
       // Act
       await taskManager.analyzeTaskComplexity(options);
 
       // Assert
-      expect(mockCallClaude).toHaveBeenCalled();
+      expect(mockCallGemini).toHaveBeenCalled();
       expect(mockCallPerplexity).not.toHaveBeenCalled();
       expect(mockWriteJSON).toHaveBeenCalled();
       expect(mockLog).toHaveBeenCalledWith('warn', expect.stringContaining('Malformed JSON'));
     });
 
-    test('should handle missing tasks in the response (Claude)', async () => {
+    test('should handle missing tasks in the response (Gemini)', async () => {
       // Arrange
       const incompleteResponse = { tasks: [sampleApiResponse.tasks[0]] };
-      mockCallClaude.mockResolvedValueOnce(incompleteResponse);
+      mockCallGemini.mockResolvedValueOnce(incompleteResponse);
       const missingTaskResponse = { tasks: [sampleApiResponse.tasks[1], sampleApiResponse.tasks[2]] };
-      mockCallClaude.mockResolvedValueOnce(missingTaskResponse);
+      mockCallGemini.mockResolvedValueOnce(missingTaskResponse);
 
       const options = { ...baseOptions, research: false };
 
@@ -484,7 +484,7 @@ describe('Task Manager Module', () => {
       await taskManager.analyzeTaskComplexity(options);
 
       // Assert
-      expect(mockCallClaude).toHaveBeenCalledTimes(2);
+      expect(mockCallGemini).toHaveBeenCalledTimes(2);
       expect(mockCallPerplexity).not.toHaveBeenCalled();
       expect(mockWriteJSON).toHaveBeenCalledWith(
         reportPath,
@@ -511,7 +511,7 @@ describe('Task Manager Module', () => {
       mockReadFileSync.mockReturnValue(samplePRDContent);
       mockExistsSync.mockReturnValue(true);
       mockDirname.mockReturnValue('tasks');
-      mockCallClaude.mockResolvedValue(sampleClaudeResponse);
+      mockCallGemini.mockResolvedValue(sampleGeminiResponse);
       mockGenerateTaskFiles.mockResolvedValue(undefined);
     });
     
@@ -522,14 +522,14 @@ describe('Task Manager Module', () => {
       // Verify fs.readFileSync was called with the correct arguments
       expect(mockReadFileSync).toHaveBeenCalledWith('path/to/prd.txt', 'utf8');
       
-      // Verify callClaude was called with the correct arguments
-      expect(mockCallClaude).toHaveBeenCalledWith(samplePRDContent, 'path/to/prd.txt', 3);
+      // Verify callGemini was called with the correct arguments
+      expect(mockCallGemini).toHaveBeenCalledWith(samplePRDContent, 'path/to/prd.txt', 3);
       
       // Verify directory check
       expect(mockExistsSync).toHaveBeenCalledWith('tasks');
       
       // Verify writeJSON was called with the correct arguments
-      expect(mockWriteJSON).toHaveBeenCalledWith('tasks/tasks.json', sampleClaudeResponse);
+      expect(mockWriteJSON).toHaveBeenCalledWith('tasks/tasks.json', sampleGeminiResponse);
       
       // Verify generateTaskFiles was called
       expect(mockGenerateTaskFiles).toHaveBeenCalledWith('tasks/tasks.json', 'tasks');
@@ -547,9 +547,9 @@ describe('Task Manager Module', () => {
     });
     
     test('should handle errors in the PRD parsing process', async () => {
-      // Mock an error in callClaude
-      const testError = new Error('Test error in Claude API call');
-      mockCallClaude.mockRejectedValueOnce(testError);
+      // Mock an error in callGemini
+      const testError = new Error('Test error in Gemini API call');
+      mockCallGemini.mockRejectedValueOnce(testError);
       
       // Mock console.error and process.exit
       const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -587,7 +587,7 @@ describe('Task Manager Module', () => {
       expect(true).toBe(true);
     });
     
-    test('should handle streaming responses from Claude API', async () => {
+    test('should handle streaming responses from Gemini API', async () => {
       // This test would verify that:
       // 1. The function correctly handles streaming API calls
       // 2. It processes the stream data properly

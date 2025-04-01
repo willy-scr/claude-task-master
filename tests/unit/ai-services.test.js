@@ -4,23 +4,27 @@
 
 import { jest } from '@jest/globals';
 import { parseSubtasksFromText } from '../../scripts/modules/ai-services.js';
+import { readFile } from 'fs/promises';
 
 // Create a mock log function we can check later
 const mockLog = jest.fn();
 
 // Mock dependencies
-jest.mock('@anthropic-ai/sdk', () => {
-  const mockCreate = jest.fn().mockResolvedValue({
-    content: [{ text: 'AI response' }],
-  });
-  const mockAnthropicInstance = {
-    messages: {
-      create: mockCreate
+jest.mock('@google/genai', () => {
+  const mockGeminiInstance = {
+    models: {
+      get: jest.fn().mockReturnValue({
+        generateContentStream: jest.fn().mockResolvedValue({
+          response: { text: JSON.stringify({ tasks: [] }) }
+        })
+      })
     }
   };
-  const mockAnthropicConstructor = jest.fn().mockImplementation(() => mockAnthropicInstance);
+  
+  const mockGeminiConstructor = jest.fn().mockImplementation(() => mockGeminiInstance);
+  
   return {
-    Anthropic: mockAnthropicConstructor
+    GoogleGenAI: mockGeminiConstructor
   };
 });
 
@@ -59,15 +63,6 @@ jest.mock('../../scripts/modules/ui.js', () => ({
   stopLoadingIndicator: jest.fn(),
 }));
 
-// Mock anthropic global object
-global.anthropic = {
-  messages: {
-    create: jest.fn().mockResolvedValue({
-      content: [{ text: '[{"id": 1, "title": "Test", "description": "Test", "dependencies": [], "details": "Test"}]' }],
-    }),
-  },
-};
-
 // Mock process.env
 const originalEnv = process.env;
 
@@ -80,6 +75,7 @@ describe('AI Services Module', () => {
     process.env = { ...originalEnv };
     process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
     process.env.PERPLEXITY_API_KEY = 'test-perplexity-key';
+    process.env.GEMINI_API_KEY = 'test-gemini-key';
   });
 
   afterEach(() => {
@@ -292,29 +288,25 @@ These subtasks will help you implement the parent task efficiently.`;
     });
   });
 
-  describe('handleClaudeError function', () => {
-    // Import the function directly for testing
-    let handleClaudeError;
+  describe('handleGeminiError function', () => {
+    let handleGeminiError;
     
-    beforeAll(async () => {
-      // Dynamic import to get the actual function
+    beforeEach(async () => {
       const module = await import('../../scripts/modules/ai-services.js');
-      handleClaudeError = module.handleClaudeError;
+      handleGeminiError = module.handleGeminiError;
     });
-
-    test('should handle overloaded_error type', () => {
+    
+    test('should handle overloaded error', () => {
       const error = {
         type: 'error',
         error: {
-          type: 'overloaded_error',
-          message: 'Claude is experiencing high volume'
+          type: 'OVERLOADED_ERROR',
+          message: 'Gemini is experiencing high volume'
         }
       };
       
-      const result = handleClaudeError(error);
-      
-      expect(result).toContain('Claude is currently experiencing high demand');
-      expect(result).toContain('overloaded');
+      const result = handleGeminiError(error);
+      expect(result).toContain('Gemini is currently experiencing high demand');
     });
 
     test('should handle rate_limit_error type', () => {
@@ -326,7 +318,7 @@ These subtasks will help you implement the parent task efficiently.`;
         }
       };
       
-      const result = handleClaudeError(error);
+      const result = handleGeminiError(error);
       
       expect(result).toContain('exceeded the rate limit');
     });
@@ -340,7 +332,7 @@ These subtasks will help you implement the parent task efficiently.`;
         }
       };
       
-      const result = handleClaudeError(error);
+      const result = handleGeminiError(error);
       
       expect(result).toContain('issue with the request format');
     });
@@ -350,7 +342,7 @@ These subtasks will help you implement the parent task efficiently.`;
         message: 'Request timed out after 60000ms'
       };
       
-      const result = handleClaudeError(error);
+      const result = handleGeminiError(error);
       
       expect(result).toContain('timed out');
     });
@@ -360,7 +352,7 @@ These subtasks will help you implement the parent task efficiently.`;
         message: 'Network error occurred'
       };
       
-      const result = handleClaudeError(error);
+      const result = handleGeminiError(error);
       
       expect(result).toContain('network error');
     });
@@ -370,23 +362,17 @@ These subtasks will help you implement the parent task efficiently.`;
         message: 'Something unexpected happened'
       };
       
-      const result = handleClaudeError(error);
+      const result = handleGeminiError(error);
       
-      expect(result).toContain('Error communicating with Claude');
+      expect(result).toContain('Error communicating with Gemini');
       expect(result).toContain('Something unexpected happened');
     });
   });
 
-  describe('Anthropic client configuration', () => {
-    test('should include output-128k beta header in client configuration', async () => {
-      // Read the file content to verify the change is present
-      const fs = await import('fs');
-      const path = await import('path');
-      const filePath = path.resolve('./scripts/modules/ai-services.js');
-      const fileContent = fs.readFileSync(filePath, 'utf8');
-      
-      // Check if the beta header is in the file
-      expect(fileContent).toContain("'anthropic-beta': 'output-128k-2025-02-19'");
+  describe('Gemini client configuration', () => {
+    test('should configure Gemini client with correct headers', async () => {
+      const fileContent = await readFile('scripts/modules/ai-services.js', 'utf8');
+      expect(fileContent).toContain("gemini-2.0-flash");
     });
   });
 }); 
