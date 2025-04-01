@@ -1,7 +1,7 @@
 {
-  "name": "claude-task-master",
+  "name": "gemini-task-master",
   "version": "1.0.0",
-  "description": "CLI for task management with Claude AI integration",
+  "description": "CLI for task management with Gemini AI integration",
   "main": "index.js",
   "type": "module",
   "bin": {
@@ -16,17 +16,16 @@
     "prepublishOnly": "npm test"
   },
   "keywords": [
-    "claude",
+    "gemini",
     "ai",
     "task",
     "management",
     "cli",
     "project",
     "management",
-    "automation",
-    "gemini"
+    "automation"
   ],
-  "author": "Claude",
+  "author": "Your Name",
   "license": "MIT",
   "dependencies": {
     "@google/genai": "^0.7.0",
@@ -48,7 +47,6 @@
     "marked": "^11.1.1",
     "marked-terminal": "^6.2.0",
     "node-fetch": "^3.3.2",
-    "openai": "^4.24.0",
     "ora": "^7.0.1",
     "terminal-link": "^3.0.0"
   },
