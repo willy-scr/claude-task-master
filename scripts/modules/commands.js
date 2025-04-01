@@ -3,6 +3,8 @@
  * Command-line interface for the Task Master CLI
  */
 
+console.log('[LOG] Entering scripts/modules/commands.js');
+
 import { program } from 'commander';
 import path from 'path';
 import chalk from 'chalk';
@@ -216,9 +218,6 @@ function registerCommands(programInstance) {
       const forceFlag = options.force;
       const useResearch = options.research === true;
       const additionalContext = options.prompt || '';
-      
-      // Debug log to verify the value
-      log('debug', `Research enabled: ${useResearch}`);
       
       if (allFlag) {
         console.log(chalk.blue(`Expanding all tasks with ${numSubtasks} subtasks each...`));

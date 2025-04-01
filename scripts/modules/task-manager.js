@@ -9,7 +9,7 @@ import chalk from 'chalk';
 import boxen from 'boxen';
 import Table from 'cli-table3';
 import readline from 'readline';
-import { startLoadingIndicator, stopLoadingIndicator, formatDependenciesWithStatus, getComplexityWithColor, createProgressBar } from './ui.js';
+import { displayBanner, startLoadingIndicator, stopLoadingIndicator, formatDependenciesWithStatus, getComplexityWithColor, getStatusWithColor, createProgressBar } from './ui.js';
 import { CONFIG, log, readJSON, writeJSON, sanitizePrompt, findTaskById, readComplexityReport, findTaskInComplexityReport, truncate } from './utils.js';
 
 import { 
@@ -495,7 +495,10 @@ async function setTaskStatus(tasksPath, taskIdInput, newStatus) {
 async function updateSingleTaskStatus(tasksPath, taskIdInput, newStatus, data) {
   // Check if it's a subtask (e.g., "1.2")
   if (taskIdInput.includes('.')) {
-    const [parentId, subtaskId] = taskIdInput.split('.').map(id => parseInt(id, 10));
+    const parts = taskIdInput.split('.');
+    const parentIdStr = parts[0];
+    const subtaskIdStr = parts[1];
+    const parentId = parseInt(parentIdStr, 10);
     
     // Find the parent task
     const parentTask = data.tasks.find(t => t.id === parentId);
@@ -508,16 +511,22 @@ async function updateSingleTaskStatus(tasksPath, taskIdInput, newStatus, data) {
       throw new Error(`Parent task ${parentId} has no subtasks`);
     }
     
-    const subtask = parentTask.subtasks.find(st => st.id === subtaskId);
+    // Try to find the subtask by both numeric ID and string ID
+    const subtask = parentTask.subtasks.find(st => 
+      st.id === subtaskIdStr || 
+      st.id === parseInt(subtaskIdStr, 10) ||
+      st.id === taskIdInput
+    );
+    
     if (!subtask) {
-      throw new Error(`Subtask ${subtaskId} not found in parent task ${parentId}`);
+      throw new Error(`Subtask ${taskIdInput} not found in parent task ${parentId}`);
     }
     
     // Update the subtask status
     const oldStatus = subtask.status || 'pending';
     subtask.status = newStatus;
     
-    log('info', `Updated subtask ${parentId}.${subtaskId} status from '${oldStatus}' to '${newStatus}'`);
+    log('info', `Updated subtask ${taskIdInput} status from '${oldStatus}' to '${newStatus}'`);
     
     // Check if all subtasks are done (if setting to 'done')
     if (newStatus.toLowerCase() === 'done' || newStatus.toLowerCase() === 'completed') {
@@ -1561,10 +1570,7 @@ async function addTask(tasksPath, prompt, dependencies = [], priority = 'medium'
     dependencies = dependencies.filter(depId => !invalidDeps.includes(depId));
   }
   
-  // Create the system prompt for Claude
-  const systemPrompt = "You are a helpful assistant that creates well-structured tasks for a software development project. Generate a single new task based on the user's description.";
-  
-  // Create the user prompt with context from existing tasks
+  // Create context from existing tasks
   let contextTasks = '';
   if (dependencies.length > 0) {
     // Provide context for the dependent tasks
@@ -1599,41 +1605,42 @@ async function addTask(tasksPath, prompt, dependencies = [], priority = 'medium'
   IMPORTANT: Return ONLY the JSON object, nothing else.`;
   
   // Start the loading indicator
-  const loadingIndicator = startLoadingIndicator('Generating new task with Claude AI...');
+  const loadingIndicator = startLoadingIndicator('Generating new task with Gemini AI...');
   
   let fullResponse = '';
   let streamingInterval = null;
 
   try {
-    // Call Claude with streaming enabled
-    const stream = await anthropic.messages.create({
-      max_tokens: CONFIG.maxTokens,
-      model: CONFIG.model,
-      temperature: CONFIG.temperature,
-      messages: [{ role: "user", content: userPrompt }],
-      system: systemPrompt,
-      stream: true
+    // Get the Gemini model
+    const model = geminiClient.getGenerativeModel({ model: CONFIG.model });
+    
+    // Create streaming content generator
+    const result = await model.generateContentStream({
+      contents: [{ parts: [{ text: userPrompt }] }],
+      generationConfig: {
+        maxOutputTokens: CONFIG.maxTokens,
+        temperature: CONFIG.temperature
+      }
     });
     
     // Update loading indicator to show streaming progress
     let dotCount = 0;
     streamingInterval = setInterval(() => {
       readline.cursorTo(process.stdout, 0);
-      process.stdout.write(`Receiving streaming response from Claude${'.'.repeat(dotCount)}`);
+      process.stdout.write(`Receiving streaming response from Gemini${'.'.repeat(dotCount)}`);
       dotCount = (dotCount + 1) % 4;
     }, 500);
     
     // Process the stream
-    for await (const chunk of stream) {
-      if (chunk.type === 'content_block_delta' && chunk.delta.text) {
-        fullResponse += chunk.delta.text;
-      }
+    for await (const chunk of result.stream) {
+      const chunkText = chunk.text();
+      fullResponse += chunkText;
     }
     
     if (streamingInterval) clearInterval(streamingInterval);
     stopLoadingIndicator(loadingIndicator);
     
-    log('info', "Completed streaming response from Claude API!");
+    log('info', "Completed streaming response from Gemini API!");
     log('debug', `Streaming response length: ${fullResponse.length} characters`);
     
     // Parse the response - handle potential JSON formatting issues
@@ -1643,16 +1650,31 @@ async function addTask(tasksPath, prompt, dependencies = [], priority = 'medium'
       const jsonMatch = fullResponse.match(/```(?:json)?([^`]+)```/);
       const jsonContent = jsonMatch ? jsonMatch[1] : fullResponse;
       
+      // Improved JSON parsing - clean the response first
+      let cleanedJson = jsonContent.trim();
+      
+      // Remove non-JSON content at the beginning if present
+      const jsonStartIndex = cleanedJson.indexOf('{');
+      if (jsonStartIndex > 0) {
+        cleanedJson = cleanedJson.substring(jsonStartIndex);
+      }
+      
+      // Remove non-JSON content at the end if present
+      const jsonEndIndex = cleanedJson.lastIndexOf('}');
+      if (jsonEndIndex < cleanedJson.length - 1) {
+        cleanedJson = cleanedJson.substring(0, jsonEndIndex + 1);
+      }
+      
       // Parse the JSON
-      taskData = JSON.parse(jsonContent);
+      taskData = JSON.parse(cleanedJson);
       
       // Check that we have the required fields
       if (!taskData.title || !taskData.description) {
         throw new Error("Missing required fields in the generated task");
       }
     } catch (error) {
-      log('error', "Failed to parse Claude's response as valid task JSON:", error);
-      log('debug', "Response content:", fullResponse);
+      log('error', `Failed to parse Gemini's response as valid task JSON: ${error}`);
+      log('debug', `Response content: ${fullResponse}`);
       process.exit(1);
     }
     
@@ -1706,8 +1728,68 @@ async function addTask(tasksPath, prompt, dependencies = [], priority = 'medium'
 }
 
 /**
- * Analyzes task complexity and generates expansion recommendations
- * @param {Object} options Command options
+ * Generate a prompt for task complexity analysis
+ * @param {Object} tasksData - Tasks data from JSON file
+ * @returns {string} Prompt for complexity analysis
+ */
+function generateComplexityAnalysisPrompt(tasksData) {
+  const taskPrompts = tasksData.tasks.map(task => {
+    // Skip tasks with existing subtasks
+    const hasSubtasks = task.subtasks && task.subtasks.length > 0;
+    
+    let detailsSection = '';
+    if (task.details) {
+      // Format the details to ensure they render well in the prompt
+      // Break long lines and preserve spacing
+      detailsSection = task.details
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .join('\n');
+    }
+    
+    return `Task ID: ${task.id}
+Title: ${task.title}
+Description: ${task.description}
+Status: ${task.status}
+Priority: ${task.priority}
+Has Existing Subtasks: ${hasSubtasks ? 'Yes' : 'No'}
+Details: ${detailsSection}`;
+  }).join('\n\n---\n\n');
+  
+  return `Analyze each of the following software development tasks and rate their complexity on a scale of 1-10, where:
+1-3 = Simple (few external dependencies, straightforward implementation)
+4-6 = Moderate (multiple components, some design decisions required)
+7-10 = Complex (significant architectural work, multiple systems, complex logic)
+
+For each task, provide:
+1. A complexity score (1-10)
+2. Recommended number of subtasks for optimal breakdown
+3. A reasoning explaining your complexity assessment
+4. A detailed prompt to use for expanding this task into subtasks
+
+Return your analysis as a JSON array of objects with the following structure:
+[
+  {
+    "taskId": 1,
+    "taskTitle": "Task Title",
+    "complexityScore": 5,
+    "recommendedSubtasks": 3,
+    "expansionPrompt": "Detailed prompt to help expand this task...",
+    "reasoning": "Explanation of complexity assessment..."
+  },
+  ...
+]
+
+TASKS TO ANALYZE:
+
+${taskPrompts}`;
+}
+
+/**
+ * Process task complexity analysis
+ * @param {Object} options - Command options
+ * @returns {Promise<void>}
  */
 async function processTaskComplexity(options) {
   const tasksPath = options.file || 'tasks/tasks.json';
@@ -1810,7 +1892,8 @@ DO NOT include any text before or after the JSON array. No explanations, no mark
       async function useGeminiForComplexityAnalysis() {
         try {
           console.log(chalk.blue('Using Gemini for complexity analysis...'));
-          const model = geminiClient.models.get(modelOverride || CONFIG.model);
+          // Perbarui ini untuk menggunakan getGenerativeModel bukan models.get
+          const model = geminiClient.getGenerativeModel({ model: modelOverride || CONFIG.model });
           
           const complexityPrompt = `
 You are an expert software architect and project manager analyzing task complexity. 
@@ -2043,7 +2126,8 @@ DO NOT include any text before or after the JSON array. No explanations, no mark
               missingAnalysisResponse = result.choices[0].message.content;
             } else {
               // Use Gemini
-              const model = geminiClient.models.get(modelOverride || CONFIG.model);
+              // Perbarui ini untuk menggunakan getGenerativeModel bukan models.get
+              const model = geminiClient.getGenerativeModel({ model: modelOverride || CONFIG.model });
               
               const result = await model.generateContent({
                 contents: [{ parts: [{ text: missingTaskPrompt }] }],

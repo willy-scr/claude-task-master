@@ -5,7 +5,7 @@
 
 // NOTE/TODO: Menggunakan Gemini API
 
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
 import { CONFIG, log, sanitizePrompt } from './utils.js';
@@ -16,9 +16,7 @@ import chalk from 'chalk';
 dotenv.config();
 
 // Configure Gemini client
-const geminiClient = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-});
+const geminiClient = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // Lazy-loaded Perplexity client
 let perplexity = null;
@@ -132,7 +130,7 @@ Expected output format:
 Important: Your response must be valid JSON only, with no additional explanation or comments.`;
 
     // Use streaming for Gemini (OpenAI compatibility mode)
-    const model = geminiClient.models.get("gemini-2.0-flash");
+    const model = geminiClient.getGenerativeModel({ model: CONFIG.model });
     
     // Prepare content with system prompt and user content
     const geminiPrompt = `${systemPrompt}\n\nHere's the Product Requirements Document (PRD) to break down into ${numTasks} tasks:\n\n${prdContent}`;
@@ -179,7 +177,7 @@ async function handleStreamingRequest(prompt, prdPath, numTasks, maxTokens) {
   
   try {
     // Get the model
-    const model = geminiClient.models.get("gemini-2.0-flash");
+    const model = geminiClient.getGenerativeModel({ model: CONFIG.model });
     
     // Use streaming for handling large responses
     const result = await model.generateContentStream({
@@ -318,7 +316,7 @@ async function retryWithGemini(problemContent, numTasks, retryCount, originalPro
   try {
     log('info', 'Asking Gemini to fix the JSON response...');
     
-    const model = geminiClient.models.get("gemini-2.0-flash");
+    const model = geminiClient.getGenerativeModel({ model: CONFIG.model });
     
     const fixPrompt = `
 I received the following response from an AI model, but it's not valid JSON or has structural issues.
@@ -445,7 +443,7 @@ async function refineTaskWithGemini(taskData, researchResults, prompt = "") {
   const loadingIndicator = startLoadingIndicator(`Refining task ${taskData.id} with research insights...`);
   
   try {
-    const model = geminiClient.models.get("gemini-2.0-flash");
+    const model = geminiClient.getGenerativeModel({ model: CONFIG.model });
     
     const refinePrompt = `
 Based on the following task information and research results, create a detailed implementation plan with the following sections:
@@ -498,7 +496,7 @@ async function expandTaskWithGemini(taskData, prompt = "", isSubtask = false) {
   const loadingIndicator = startLoadingIndicator(`Expanding task ${taskData.id}: ${taskData.title}...`);
   
   try {
-    const model = geminiClient.models.get("gemini-2.0-flash");
+    const model = geminiClient.getGenerativeModel({ model: CONFIG.model });
     
     const expandPrompt = `
 You are a development task breakdown expert. Create a detailed implementation plan for this task:
@@ -566,7 +564,7 @@ async function createSubtasksWithGemini(taskData, numSubtasks, prompt = "", useR
   const loadingIndicator = startLoadingIndicator(`Creating ${numSubtasks} subtasks for task ${taskData.id}...`);
   
   try {
-    const model = geminiClient.models.get("gemini-2.0-flash");
+    const model = geminiClient.getGenerativeModel({ model: CONFIG.model });
     
     const subtaskPrompt = `
 You are an expert at breaking down development tasks into subtasks. Given this parent task:
@@ -672,7 +670,7 @@ async function fixSubtasksJson(problematicJson, parentTaskId, numSubtasks) {
   log('info', 'Attempting to fix malformed subtasks JSON...');
   
   try {
-    const model = geminiClient.models.get("gemini-2.0-flash");
+    const model = geminiClient.getGenerativeModel({ model: CONFIG.model });
     
     const fixPrompt = `
 I received the following response that should be a JSON array of ${numSubtasks} subtasks, but it has formatting issues.
@@ -770,7 +768,7 @@ async function analyzeTaskComplexity(taskData, useResearch = false) {
   const loadingIndicator = startLoadingIndicator(`Analyzing complexity of task ${taskData.id}...`);
   
   try {
-    const model = geminiClient.models.get("gemini-2.0-flash");
+    const model = geminiClient.getGenerativeModel({ model: CONFIG.model });
     
     const complexityPrompt = `
 You are an expert at estimating development task complexity. Analyze this task:

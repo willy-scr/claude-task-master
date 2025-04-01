@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "module",
   "bin": {
-    "task-master": "./bin/task-master.js"
+    "task-master": "bin/task-master.js"
   },
   "scripts": {
     "test": "jest --detectOpenHandles",
@@ -13,7 +13,11 @@
     "test:coverage": "jest --coverage",
     "test:ci": "jest --ci",
     "version": "auto-changelog -p && git add CHANGELOG.md",
-    "prepublishOnly": "npm test"
+    "prepublishOnly": "npm test",
+    "dev": "node scripts/dev.js",
+    "list": "node scripts/dev.js list",
+    "generate": "node scripts/dev.js generate",
+    "parse-prd": "node scripts/dev.js parse-prd"
   },
   "keywords": [
     "gemini",
@@ -28,7 +32,6 @@
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
-    "@google/genai": "^0.7.0",
     "@google/generative-ai": "^0.24.0",
     "boxen": "^7.1.1",
     "chalk": "^5.3.0",
@@ -48,7 +51,10 @@
     "marked-terminal": "^6.2.0",
     "node-fetch": "^3.3.2",
     "ora": "^7.0.1",
-    "terminal-link": "^3.0.0"
+    "terminal-link": "^3.0.0",
+    "@anthropic-ai/sdk": "^0.39.0",
+    "openai": "^4.86.1",
+    "cli-table3": "^0.6.3"
   },
   "devDependencies": {
     "@babel/preset-env": "^7.23.7",
@@ -77,10 +83,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/claude-task-master.git"
+    "url": "git+https://github.com/yourusername/claude-task-master.git"
   },
   "bugs": {
     "url": "https://github.com/yourusername/claude-task-master/issues"
   },
-  "homepage": "https://github.com/yourusername/claude-task-master#readme"
+  "homepage": "https://github.com/yourusername/claude-task-master#readme",
+  "directories": {
+    "test": "tests"
+  }
 }
